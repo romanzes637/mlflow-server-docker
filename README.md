@@ -64,9 +64,9 @@ cd tests/scenario_5
 ```
 3. Run test script
 ```sh
-MLFLOW_TRACKING_URI=http://YOUR_HOST:5000 MLFLOW_TRACKING_USERNAME=user MLFLOW_TRACKING_PASSWORD=password python test.py
+MLFLOW_TRACKING_URI=http://YOUR_HOST:5000 MLFLOW_TRACKING_USERNAME=HTPASSWD_USERNAME MLFLOW_TRACKING_PASSWORD=HTPASSWD_PASSWORD python test.py
 ```
-4. Check MLflow UI on new exriment and model at 
+4. Check MLflow UI on new experiment and model at 
 ```
 http://YOUR_HOST:5000
 ```

@@ -22,7 +22,7 @@ services:
       timeout: 20s
       retries: 3
     volumes:
-      - minio_mlflow_:/data
+      - minio_mlflow:/data
   
   nginx_minio:
     image: nginx:1.19.2-alpine
@@ -73,7 +73,7 @@ services:
     #   POSTGRES_USER: user
     #   POSTGRES_DB: mlflow
     volumes:
-       - postgres_mlflow_:/var/lib/postgresql/data
+       - postgres_mlflow:/var/lib/postgresql/data
     expose:
       - "5432"
     networks:
@@ -91,7 +91,7 @@ services:
       PGADMIN_LISTEN_PORT: 5050
       PGADMIN_DEFAULT_EMAIL: user@domain.com
     volumes:
-       - pgadmin_:/var/lib/pgadmin
+       - pgadmin:/var/lib/pgadmin
     ports:
       - "5050:5050"
     networks:
