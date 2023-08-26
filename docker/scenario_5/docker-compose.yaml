@@ -1,21 +1,17 @@
 version: '3.8'
 
 services:  
-  minio_mlflow:
+  minio-mlflow:
     image: quay.io/minio/minio:RELEASE.2022-06-25T15-50-16Z
-    container_name: minio_mlflow
-    hostname: minio-mlflow  # See https://github.com/minio/minio/issues/13025
-    command: server --console-address ":9001" /data/
+    command: ["minio", "server", "--address", "0.0.0.0:9000", "--console-address", "0.0.0.0:9001", "/data"]
     expose:
-      - "9000"  # server
-      - "9001"  # browser
+      - 9000  # server
+      - 9001  # console
     networks:
       - mlflow
     env_file:
       - .env
       - .env.secret
-    # environment:
-    #   MINIO_ROOT_USER: user
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -23,123 +19,120 @@ services:
       retries: 3
     volumes:
       - minio_mlflow:/data
+    profiles: 
+      - storage
+      - server
   
-  nginx_minio:
+  nginx-minio-mlflow:
     image: nginx:1.19.2-alpine
-    container_name: nginx_minio
-    hostname: nginx-minio
     volumes:
       - ./minio/nginx.conf:/etc/nginx/nginx.conf:ro
-    expose:  # For internal access
-      - "9000"  # server
-    #   - "9001"  # browser
-    ports:  # For external access
-      # - "9000:9000"  # server
-      - "9001:9001"  # browser
+    expose:
+      - 9000  # server
+      # - 9001  # console
+    ports:
+      # - 9000:9000  # server
+      - 9001:9001  # console
     networks:
       - mlflow
     depends_on:
-      - minio_mlflow
+      - minio-mlflow
     restart: always
+    profiles: 
+      - storage
+      - server
   
-  minio_mlflow_mc:
+  minio-mlflow-init:
     image: quay.io/minio/mc:RELEASE.2023-08-15T23-03-09Z
-    container_name: minio_mlflow_mc
     env_file:
       - .env
       - .env.secret
-    # environment:
-    #   MINIO_ROOT_USER: user
     networks:
       - mlflow
     depends_on:
-      - minio_mlflow
-    entrypoint: >
-      /bin/sh -c "
-      until (/usr/bin/mc config host add minio-mlflow http://nginx-minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}) do echo '...waiting...' && sleep 1; done;
-      /usr/bin/mc mb minio-mlflow/mlflow;
-      /usr/bin/mc policy set public minio-mlflow/mlflow;
-      exit 0;
-      "
+      - minio-mlflow
+    volumes:
+      - ./minio/init.sh:/init.sh
+    entrypoint: bash -c "./init.sh"
+    profiles: 
+      - storage
+      - server
     
-  postgres_mlflow:
+  postgres-mlflow:
     image: postgres:15.4
-    container_name: postgres_mlflow
-    hostname: postgres-mlflow
     env_file:
       - .env
       - .env.secret
-    # environment:
-    #   POSTGRES_USER: user
-    #   POSTGRES_DB: mlflow
     volumes:
        - postgres_mlflow:/var/lib/postgresql/data
     expose:
-      - "5432"
+      - 5432
     networks:
       - mlflow
     restart: always
+    profiles: 
+      - server
       
-  pgadmin:
+  pgadmin-mlflow:
     image: dpage/pgadmin4:7.5
-    container_name: pgadmin
     restart: always
     env_file:
       - .env
       - .env.secret
     environment:
       PGADMIN_LISTEN_PORT: 5050
-      PGADMIN_DEFAULT_EMAIL: user@domain.com
     volumes:
-       - pgadmin:/var/lib/pgadmin
+       - pgadmin_mlflow:/var/lib/pgadmin
     ports:
-      - "5050:5050"
+      - 5050:5050
     networks:
       - mlflow
+    profiles: 
+      - server
       
   mlflow:
     image: mlflow  # TODO Use MLflow official image if it adds boto3 and psycopg2 packages
-    container_name: mlflow
-    restart: always
-    build: ./mlflow
+    build: ./mlflow    
     expose:
-      - "5000"
+      - 5000
     networks:
       - mlflow
     env_file:
       - .env
       - .env.secret
     environment:
-      MLFLOW_S3_ENDPOINT_URL: "http://nginx-minio:9000"  # See nginx_minio hostname:port
-    #   MINIO_ROOT_USER: user
+      MLFLOW_S3_ENDPOINT_URL: "http://nginx-minio-mlflow:9000"
     depends_on:
-      - minio_mlflow_mc
-      - postgres_mlflow
+      - minio-mlflow-init
+      - postgres-mlflow
     # backend-store-uri template "postgresql://user:password@host:port/db"
-    command: >
+    entrypoint: >
       /bin/sh -c "
       AWS_ACCESS_KEY_ID=$${MINIO_ROOT_USER}
       AWS_SECRET_ACCESS_KEY=$${MINIO_ROOT_PASSWORD}
       mlflow server 
       --backend-store-uri postgresql://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@postgres-mlflow:5432/$${POSTGRES_DB}
-      --artifacts-destination s3://mlflow 
+      --artifacts-destination s3://$${MINIO_MLFLOW_BUCKET_NAME} 
       --serve-artifacts 
       --host 0.0.0.0"
+    restart: always
+    profiles: 
+      - server
 
-  nginx_mlflow:
+  nginx-mlflow:
     image: nginx:1.19.2-alpine
-    container_name: nginx_mlflow
-    hostname: nginx-mlflow
     volumes:
       - ./mlflow/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./.htpasswd:/etc/nginx/.htpasswd
     ports:
-       - "5000:5000"
+       - 5000:5000
     networks:
       - mlflow
     depends_on:
       - mlflow
     restart: always
+    profiles: 
+      - server
     
 networks:
   mlflow:
@@ -148,4 +141,4 @@ networks:
 volumes:
   minio_mlflow:
   postgres_mlflow:
-  pgadmin:
+  pgadmin_mlflow:
